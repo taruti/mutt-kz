@@ -193,6 +193,7 @@ int mutt_sasl_client_new (CONNECTION* conn, sasl_conn_t** saslconn)
       return -1;
   }
 
+#if 0
   size = sizeof (local);
   if (!getsockname (conn->fd, (struct sockaddr *)&local, &size)) {
     if (!iptostring((struct sockaddr *)&local, size, iplocalport,
@@ -214,6 +215,7 @@ int mutt_sasl_client_new (CONNECTION* conn, sasl_conn_t** saslconn)
   }
   else
     dprint (2, (debugfile, "SASL failed to get remote IP address\n"));
+#endif
 
   dprint (2, (debugfile, "SASL local ip: %s, remote ip:%s\n", NONULL(plp),
 	      NONULL(prp)));
