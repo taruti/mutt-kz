@@ -88,6 +88,10 @@
 #define  M_CLEAR   (1<<5) /* clear input if printable character is pressed */
 #define  M_COMMAND (1<<6) /* do command completion */
 #define  M_PATTERN (1<<7) /* pattern mode - only used for history classes */
+#if USE_NOTMUCH
+#define  M_NM_QUERY (1<<8) /* Notmuch query mode. */
+#define  M_NM_TAG   (1<<9) /* Notmuch tag +/- mode. */
+#endif
 
 /* flags for mutt_get_token() */
 #define M_TOKEN_EQUAL		1	/* treat '=' as a special */
@@ -226,6 +230,9 @@ enum
   M_CRYPT_ENCRYPT,
   M_PGP_KEY,
   M_XLABEL,
+#ifdef USE_NOTMUCH
+  M_NOTMUCH_LABEL,
+#endif
   M_MIMEATTACH,
   
   /* Options for Mailcap lookup */
@@ -513,6 +520,7 @@ enum
 
 #ifdef USE_NOTMUCH
   OPTVIRTSPOOLFILE,
+  OPTNOTMUCHRECORD,
 #endif
 
   OPTMAX

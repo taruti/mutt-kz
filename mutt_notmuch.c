@@ -13,7 +13,7 @@
  *   (it's implemented in get_ctxdata() and init_context() functions).
  *
  * - exception are nm_nonctx_* functions -- these functions use nm_default_uri
- *   (or parse URI from another resourse)
+ *   (or parse URI from another resource)
  */
 #if HAVE_CONFIG_H
 # include "config.h"
@@ -45,7 +45,7 @@
 #include "mutt_notmuch.h"
 #include "mutt_curses.h"
 
-/* read whole-thread or maching messages only? */
+/* read whole-thread or matching messages only? */
 enum {
 	NM_QUERY_TYPE_MESGS = 0,	/* default */
 	NM_QUERY_TYPE_THREADS
@@ -462,7 +462,7 @@ void nm_longrun_init(CONTEXT *ctx, int writable)
 
 	if (data && get_db(data, writable)) {
 		data->longrun = TRUE;
-		dprint(2, (debugfile, "nm: long run initialied\n"));
+		dprint(2, (debugfile, "nm: long run initialized\n"));
 	}
 }
 
@@ -471,7 +471,7 @@ void nm_longrun_done(CONTEXT *ctx)
 	struct nm_ctxdata *data = get_ctxdata(ctx);
 
 	if (data && release_db(data) == 0)
-		dprint(2, (debugfile, "nm: long run deinitialied\n"));
+		dprint(2, (debugfile, "nm: long run deinitialized\n"));
 }
 
 static int is_longrun(struct nm_ctxdata *data)
@@ -532,7 +532,7 @@ static notmuch_query_t *get_query(struct nm_ctxdata *data, int writable)
 		goto err;
 
 	notmuch_query_set_sort(q, NOTMUCH_SORT_NEWEST_FIRST);
-	dprint(2, (debugfile, "nm: query succesfully initialized\n"));
+	dprint(2, (debugfile, "nm: query successfully initialized\n"));
 	return q;
 err:
 	if (!is_longrun(data))
@@ -595,7 +595,7 @@ static int update_header_tags(HEADER *h, notmuch_message_t *msg)
 }
 
 /*
- * set/update HEADE->path and HEADER->data->path
+ * set/update HEADER->path and HEADER->data->path
  */
 static int update_message_path(HEADER *h, const char *path)
 {
@@ -879,8 +879,6 @@ int nm_read_query(CONTEXT *ctx)
 	notmuch_query_t *q;
 	struct nm_ctxdata *data;
 	int rc = -1;
-	char msgbuf[STRING];
-	progress_t progress;
 
 	if (init_context(ctx) != 0)
 		return -1;
@@ -889,18 +887,24 @@ int nm_read_query(CONTEXT *ctx)
 	if (!data)
 		return -1;
 
-	data->progress = &progress;
-
 	dprint(1, (debugfile, "nm: reading messages...[current count=%d]\n",
 				ctx->msgcount));
-	if (!ctx->quiet) {
-	  snprintf (msgbuf, sizeof (msgbuf), _("Reading %s..."), ctx->path);
-	  mutt_progress_init (data->progress, msgbuf, M_PROGRESS_MSG, ReadInc, 0);
-	}
 
 	q = get_query(data, FALSE);
 	if (q) {
 		int type = get_query_type(data);
+		char msgbuf[STRING];
+		progress_t progress;
+
+		if (!ctx->quiet) {
+			unsigned ct = notmuch_query_count_messages(q);
+
+			data->progress = &progress;
+			snprintf (msgbuf, sizeof(msgbuf),
+					_("Reading %s..."), ctx->path);
+			mutt_progress_init(data->progress, msgbuf,
+					M_PROGRESS_MSG, ReadInc, ct);
+		}
 
 		switch(type) {
 		case NM_QUERY_TYPE_MESGS:
@@ -1097,7 +1101,7 @@ static int remove_filename(notmuch_database_t *db, const char *path)
 		return -1;
 
 	/*
-	 * note that unlink() is probably unecessary here, it's already removed
+	 * note that unlink() is probably unnecessary here, it's already removed
 	 * by mh_sync_mailbox_message(), but for sure...
 	 */
 	st = notmuch_database_remove_message(db, path);
@@ -1375,7 +1379,11 @@ int nm_nonctx_get_count(char *path, int *all, int *new)
 	rc = 0;
 done:
 	if (db) {
+#ifdef NOTMUCH_API_3
+		notmuch_database_destroy(db);
+#else
 		notmuch_database_close(db);
+#endif
 		dprint(1, (debugfile, "nm: count close DB\n"));
 	}
 	if (!dflt)
@@ -1531,4 +1539,93 @@ done:
 	return occult ? M_REOPENED :
 	       ctx->msgcount > oldmsgcount ? M_NEW_MAIL :
 	       new_flags ? M_FLAGS : 0;
+}
+
+int nm_record_message(CONTEXT *ctx, char *path, HEADER *h)
+{
+	notmuch_database_t *db;
+	notmuch_status_t st;
+	notmuch_message_t *msg;
+	int rc = -1;
+	struct nm_ctxdata *data = get_ctxdata(ctx);
+
+	if (!path || !data || access(path, F_OK) != 0)
+		return 0;
+	db = get_db(data, TRUE);
+	if (!db)
+		return -1;
+
+	dprint(1, (debugfile, "nm: record message: %s\n", path));
+	st = notmuch_database_begin_atomic(db);
+	if (st)
+		return -1;
+
+	st = notmuch_database_add_message(db, path, &msg);
+
+	if (st != NOTMUCH_STATUS_SUCCESS &&
+	    st != NOTMUCH_STATUS_DUPLICATE_MESSAGE_ID) {
+		dprint(1, (debugfile, "nm: failed to add '%s' [st=%d]\n", path, (int) st));
+		goto done;
+	}
+
+	if (st == NOTMUCH_STATUS_SUCCESS && msg) {
+		notmuch_message_maildir_flags_to_tags(msg);
+		if (h)
+			update_tags(msg, nm_header_get_tags(h));
+		if (NotmuchRecordTags)
+			update_tags(msg, NotmuchRecordTags);
+	}
+
+	rc = 0;
+done:
+	if (msg)
+		notmuch_message_destroy(msg);
+	notmuch_database_end_atomic(db);
+
+	if (!is_longrun(data))
+		release_db(data);
+	return rc;
+}
+
+/*
+ * Fill a list with all notmuch tags.
+ *
+ * If tag_list is NULL, just count the tags.
+ */
+int nm_get_all_tags(CONTEXT *ctx, char **tag_list, int *tag_count)
+{
+	struct nm_ctxdata *data = get_ctxdata(ctx);
+	notmuch_database_t *db = NULL;
+	notmuch_tags_t *tags = NULL;
+	int rc = -1;
+
+	if (!data)
+		return -1;
+
+	if (!(db = get_db(data, FALSE)) ||
+			!(tags = notmuch_database_get_all_tags(db)))
+		goto done;
+
+	*tag_count = 0;
+	dprint(1, (debugfile, "nm: get all tags\n"));
+
+	while (notmuch_tags_valid(tags)) {
+		if (tag_list != NULL) {
+			tag_list[*tag_count] = safe_strdup(notmuch_tags_get(tags));
+		}
+		(*tag_count)++;
+		notmuch_tags_move_to_next(tags);
+	}
+
+	rc = 0;
+done:
+	if (tags)
+		notmuch_tags_destroy(tags);
+
+	if (!is_longrun(data))
+		release_db(data);
+
+	dprint(1, (debugfile, "nm: get all tags done [rc=%d tag_count=%u]\n", rc,
+						 *tag_count));
+	return rc;
 }

@@ -3,7 +3,7 @@ dnl Process this file with autoconf to produce a configure script.
 dnl !!! WHEN ADDING NEW CONFIGURE TESTS, PLEASE ADD CODE TO MAIN.C !!!
 dnl !!! TO DUMP THEIR RESULTS WHEN MUTT -V IS CALLED            !!!
 
-AC_INIT([mutt],[m4_esyscmd(tr -d \\n <VERSION)])
+AC_INIT([mutt-kz],[m4_esyscmd(tr -d \\n <VERSION)])
 AC_CONFIG_SRCDIR(mutt.h)
 AM_INIT_AUTOMAKE
 AC_CONFIG_HEADERS([config.h])
@@ -371,7 +371,7 @@ AC_CHECK_TYPE(ssize_t, int)
 
 AC_CHECK_FUNCS(fgetpos memmove setegid srand48 strerror)
 
-AC_REPLACE_FUNCS([setenv strcasecmp strdup strsep strtok_r wcscasecmp])
+AC_REPLACE_FUNCS([setenv strcasecmp strdup strndup strnlen strsep strtok_r wcscasecmp])
 AC_REPLACE_FUNCS([strcasestr mkdtemp])
 
 AC_CHECK_FUNC(getopt)

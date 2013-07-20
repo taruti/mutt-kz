@@ -72,7 +72,6 @@ enum
 
 #define HDR_XOFFSET 10
 #define TITLE_FMT "%10s" /* Used for Prompts, which are ASCII */
-#define W (COLS - HDR_XOFFSET)
 #define W (COLS - HDR_XOFFSET - SidebarWidth)
 
 static const char * const Prompts[] =
@@ -1201,7 +1200,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
          if (msg->content->next)
            msg->content = mutt_make_multipart (msg->content);
 
-         if (mutt_write_fcc (fname, msg, NULL, 0, NULL) < 0)
+         if (mutt_write_fcc (fname, msg, NULL, 0, NULL, NULL) < 0)
            msg->content = mutt_remove_multipart (msg->content);
          else
            mutt_message _("Message written.");

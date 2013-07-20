@@ -1152,7 +1152,7 @@ int mutt_index_menu (void)
 	break;
 
       case OP_MAIN_QUASI_DELETE:
-	if (tag && !option (OPTAUTOTAG))
+	if (tag)
 	{
 	  for (j = 0; j < Context->vcount; j++) {
 	    if (Context->hdrs[Context->v2r[j]]->tagged) {
@@ -1179,12 +1179,12 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	*buf = '\0';
-	if (mutt_get_field ("Add/remove labels: ", buf, sizeof (buf), 0) || !*buf)
+	if (mutt_get_field ("Add/remove labels: ", buf, sizeof (buf), M_NM_TAG) || !*buf)
 	{
           mutt_message _("No label specified, aborting.");
           break;
         }
-	if (tag && !option (OPTAUTOTAG))
+	if (tag)
 	{
 	  char msgbuf[STRING];
 	  progress_t progress;
@@ -1241,7 +1241,7 @@ int mutt_index_menu (void)
 
       case OP_MAIN_VFOLDER_FROM_QUERY:
 	buf[0] = '\0';
-        if (mutt_get_field ("Query: ", buf, sizeof (buf), 0) != 0 || !buf[0])
+        if (mutt_get_field ("Query: ", buf, sizeof (buf), M_NM_QUERY) != 0 || !buf[0])
         {
           mutt_message _("No query, aborting.");
           break;

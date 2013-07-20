@@ -28,6 +28,7 @@
 #include "sidebar.h"
 #include "buffy.h"
 #include "mx.h"
+#include "sort.h"
 #include <libgen.h>
 #include <limits.h>
 #include "keymap.h"
@@ -177,6 +178,76 @@ void set_curbuffy(char buf[LONG_STRING])
   }
 }
 
+static int compare_buffies(BUFFY* buffy1, BUFFY* buffy2, int how)
+{
+	switch (how) {
+	case SORT_PATH:
+		return mutt_strcmp(buffy1->path, buffy2->path);
+	case SORT_DESC:
+		return mutt_strcmp(buffy1->desc, buffy2->desc);
+	case SORT_COUNT_NEW:
+		return buffy2->msg_unread - buffy1->msg_unread;
+	case SORT_COUNT:
+		return buffy2->msgcount - buffy1->msgcount;
+	}
+	return -1;
+}
+
+static void sort_sidebar(BUFFY *top, int how)
+{
+	BUFFY *tmp;
+	BUFFY *prev = 0;
+
+	if (how == SORT_ORDER)
+		return;		/* keep unsorted */
+
+	for (tmp = top; tmp; prev = tmp, tmp = tmp->next) {
+		BUFFY *other = tmp->next;
+		BUFFY *otherPrev = tmp;
+
+		for( ; other; otherPrev = other, other = other->next) {
+			/* compare_buffies could actually sort in user-configured ways
+			 * using a sidebar_sort option. Now it only sorts by name */
+			int compare = compare_buffies(tmp, other, how);
+			if( compare > 0 ) {
+
+				BUFFY *otherNext = other->next;
+				BUFFY *tmpNext   = tmp->next;
+				BUFFY *buffyAux;
+
+				if( prev ) {
+					prev->next = other;
+					other->prev = prev;
+				}
+				else {
+					TopBuffy = other;
+					other->prev = 0;
+				}
+
+				tmp->next = otherNext;
+				if( otherNext)
+					otherNext->prev = tmp;
+
+				if( tmpNext == other ) {
+					other->next = tmp;
+					tmp->prev = other;
+				}
+				else {
+					other->next = tmpNext;
+					tmpNext->prev = other;
+					otherPrev->next = tmp;
+					tmp->prev = otherPrev;
+				}
+
+				/* Rest tmp and other to be used by the loop */
+				buffyAux = tmp;
+				tmp = other;
+				other = buffyAux;
+			}
+		}
+	}
+}
+
 int draw_sidebar(int menu) {
 
 	char folder_buffer[LINE_MAX];
@@ -274,37 +345,16 @@ int draw_sidebar(int menu) {
 	if ( CurBuffy == 0 )
 		CurBuffy = get_incoming();
 
-	tmp = TopBuffy;
+	sort_sidebar(TopBuffy, SidebarSort);
 
+	tmp = TopBuffy;
 	SETCOLOR(MT_COLOR_NORMAL);
 
-	for ( ; tmp && lines < LINES-1 - (menu != MENU_PAGER || option(OPTSTATUSONTOP)); tmp = tmp->next ) {
-		short maildir_is_prefix = 0;
-		int sidebar_folder_depth;
-		char *sidebar_folder_name;
-		char *safe_path;
-		char *base_name;
+	for ( ; tmp && lines < LINES-1 - (menu != MENU_PAGER ||
+				option(OPTSTATUSONTOP)); tmp = tmp->next ) {
 
-		if ( !tmp->path || *tmp->path == '\0' ) {
-			move( lines, 0 );
-			lines++;
-			continue;
-		}
-
-		safe_path = strdup(tmp->path);
-		if ( !safe_path ) {
-			move( lines, 0 );
-			lines++;
-			continue;
-		}
-
-		base_name = basename(safe_path);
-		free(safe_path);
-		if ( !base_name ) {
-			move( lines, 0 );
-			lines++;
-			continue;
-		}
+		int sidebar_folder_depth = 0;
+		char *sidebar_folder_name = NULL;
 
 		if ( tmp == CurBuffy )
 			SETCOLOR(MT_COLOR_INDICATOR);
@@ -321,37 +371,62 @@ int draw_sidebar(int menu) {
 			tmp->msgcount = Context->msgcount;
 			tmp->msg_flagged = Context->flagged;
 		}
-		/* check whether Maildir is a prefix of the current folder's path */
-		if ( (strlen(tmp->path) > strlen(maildir)) &&
-			(strncmp(maildir, tmp->path, strlen(maildir)) == 0) )
-			maildir_is_prefix = 1;
-		/* calculate depth of current folder and generate its display name with indented spaces */
-		sidebar_folder_name = base_name;
-		sidebar_folder_depth = 0;
-		if ( maildir_is_prefix ) {
-			char *tmp_folder_name;
-			int i;
-			tmp_folder_name = tmp->path + strlen(maildir);
-			for (i = 0; i < strlen(tmp->path) - strlen(maildir); i++) {
-				if (tmp_folder_name[i] == '/') sidebar_folder_depth++;
+#ifdef USE_NOTMUCH
+		if (tmp->magic == M_NOTMUCH && tmp->desc)
+			sidebar_folder_name = tmp->desc;
+		else
+#endif
+		{
+			char *base_name = NULL;
+			short maildir_is_prefix = 0;
+
+			if (tmp->path)
+				base_name = strrchr(tmp->path, '/');
+			if (base_name)
+				base_name++;
+			if (!base_name || !*base_name) {
+				move( lines, 0 );
+				lines++;
+				continue;
 			}
-			if (sidebar_folder_depth > 0) {
-				if (sidebar_folder_depth + strlen(base_name) + 1 > sizeof(folder_buffer)) {
-					move( lines, 0 );
-					lines++;
-					continue;
+
+			/* check whether Maildir is a prefix of the current folder's path */
+			if ( (strlen(tmp->path) > strlen(maildir)) &&
+				(strncmp(maildir, tmp->path, strlen(maildir)) == 0) )
+				maildir_is_prefix = 1;
+
+			/* calculate depth of current folder and generate its
+			 * display name with indented spaces */
+			sidebar_folder_name = base_name;
+			if ( maildir_is_prefix ) {
+				char *tmp_folder_name;
+				int i;
+
+				tmp_folder_name = tmp->path + strlen(maildir);
+				for (i = 0; i < strlen(tmp->path) - strlen(maildir); i++) {
+					if (tmp_folder_name[i] == '/')
+						sidebar_folder_depth++;
 				}
-				sidebar_folder_name = &folder_buffer[0];
-				for (i=0; i < sidebar_folder_depth; i++)
-					sidebar_folder_name[i]=' ';
-				sidebar_folder_name[i]=0;
-				strncat(sidebar_folder_name, base_name, strlen(base_name) + sidebar_folder_depth);
+				if (sidebar_folder_depth > 0) {
+					if (sidebar_folder_depth
+					     + strlen(base_name) + 1
+					     > sizeof(folder_buffer)) {
+
+						move( lines, 0 );
+						lines++;
+						continue;
+					}
+					sidebar_folder_name = &folder_buffer[0];
+					for (i=0; i < sidebar_folder_depth; i++)
+						sidebar_folder_name[i]=' ';
+					sidebar_folder_name[i]=0;
+					strncat(sidebar_folder_name, base_name,
+							strlen(base_name)
+							+ sidebar_folder_depth);
+				}
 			}
 		}
-#ifdef USE_NOTMUCH
-		else if (tmp->magic == M_NOTMUCH)
-			sidebar_folder_name = tmp->desc;
-#endif
+
 		printw( "%.*s", SidebarWidth - delim_len + 1,
 			make_sidebar_entry(sidebar_folder_name, tmp->msgcount,
 			tmp->msg_unread, tmp->msg_flagged));

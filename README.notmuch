@@ -69,7 +69,7 @@ notmuch support for mutt
 
       type=<threads|messages>
 
-         Reads all matching messages or whole-threads. The defauls is 'messages'
+         Reads all matching messages or whole-threads. The default is 'messages'
          or nm_query_type.
 
 
@@ -82,24 +82,37 @@ notmuch support for mutt
    vfolder-from-query:
       - generate new virtual folder from notmuch search query
       - default key: <Esc>X
+      - note: TAB completion of 'tag:' names is available
 
    modify-labels:
       - add or remove notmuch tags; [+]<tag> to add, -<tag> to remove
       - default key: `
+      - note: TAB completion of tag names is available
       - example: "+AAA +BBB -CCC"
 
    modify-labels-then-hide:
       - same as <modify-labels> but message is marked by <quasi-delete>
       - not mapped to any key
+      - note: TAB completion of tag names is available
       - example (add "archive" notmuch tag and remove message from screen):
 
        macro index A "<modify-labels-then-hide>+archive -inbox\n<sync-mailbox>"
        macro index I "<modify-labels-then-hide>-inbox\n<sync-mailbox>"
 
    quasi-delete:
-      - delete message from mutt (usualy after <sync-mailbox> function), but
+      - delete message from mutt (usually after <sync-mailbox> function), but
         don't touch message on disk
 
+ * Pattern modifiers:
+
+   Many of Mutt's commands allow you to specify a pattern to match (limit,
+   tag-pattern, delete-pattern, color, etc.). The following notmuch specific
+   mutt pattern modifiers are available:
+
+   - '~Y EXPR': Messages which contain EXPR in the list of labels.
+     Example:
+        # Color red all messages labeled as 'spam'.
+        color index    red      default        "~Y '\W?spam\W?'"
 
  * muttrc:
 
@@ -110,7 +123,8 @@ notmuch support for mutt
    virtual-mailboxes <description> <uri> [ ...]
 
       This command specifies one or more virtual folder. The folders are 
-      accessioble by command 'X'.
+      accessible by command 'X'. It's possible to use the virtual mailbox
+      description as a sort key (e.g set sort_sidebar=desc)
  
       example:
 
@@ -126,6 +140,22 @@ notmuch support for mutt
       When set together with sidebar, mutt will use list of virtual folders in
       the sidebar. It's possible to toggle between virtual and normal folders by
       sidebar-toggle command.
+
+   nm_record = <boolean>
+
+      Add messages stored to the mutt record (see $record in the mutt docs)
+      also to notmuch DB. If you reply to an email then the new email inherits
+      tags from the original email.
+
+   nm_record_tags = <comma delimited list>
+
+      Tags that should be removed or added to the to the messages stored in the mutt record.
+
+      example:
+
+      set record = "~/sent-mails"
+      set nm_record = yes
+      set nm_record_tags = "-inbox,archive,me"
 
    nm_open_timeout = <seconds>
 
@@ -185,6 +215,10 @@ notmuch support for mutt
 
         %g   notmuch tags (labels)
 
+        for example:
+
+        set index_format = "%4C %Z  %[%d/%b]  %-16.15F %s %> %?g?(%g)?"
+        set pager_format = "-%Z- %C/%m: %-20.20n   %s%*  -- %?g?(%g)? - (%P)"
 
  * TODO:
 
@@ -197,6 +231,10 @@ notmuch support for mutt
 
 * .muttrc example:
 
+	set record="~/Mail/Maildir/sent-mail"
+	set nm_record = yes
+	set nm_record_tags ="-inbox me archive"
+
 	set nm_default_uri="notmuch:///home/kzak/Mail/Maildir"
 	set virtual_spoolfile	= yes
 
@@ -208,6 +246,7 @@ notmuch support for mutt
 	# sidebar
 	set sidebar_width	= 35
 	set sidebar_visible	= yes
+        set sort_sidebar        = unsorted
 	color sidebar_new yellow default
 	bind index <left> sidebar-prev
 	bind index <right> sidebar-next
@@ -290,4 +329,7 @@ notmuch support for mutt
 	Mail/Maildir/misc/
 
 
+* another example:
+
+  http://notmuchmail.org/mutttips/
 

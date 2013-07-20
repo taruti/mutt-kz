@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 1996-2000,2007 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 2013 Karel Zak <kzak@redhat.com>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -284,6 +285,10 @@ int mutt_check_overwrite (const char *, const char *, char *, size_t, int *, cha
 int mutt_check_traditional_pgp (HEADER *, int *);
 int mutt_command_complete (char *, size_t, int, int);
 int mutt_var_value_complete (char *, size_t, int);
+#if USE_NOTMUCH
+int mutt_nm_query_complete (char *buffer, size_t len, int pos, int numtabs);
+int mutt_nm_tag_complete (char *buffer, size_t len, int pos, int numtabs);
+#endif
 int mutt_complete (char *, size_t);
 int mutt_compose_attachment (BODY *a);
 int mutt_copy_body (FILE *, BODY **, BODY *);
@@ -367,7 +372,7 @@ int mutt_user_is_recipient (HEADER *);
 void mutt_update_num_postponed (void);
 int mutt_wait_filter (pid_t);
 int mutt_which_case (const char *);
-int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int, char *);
+int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int, char *, char **);
 int mutt_write_mime_body (BODY *, FILE *);
 int mutt_write_mime_header (BODY *, FILE *);
 int mutt_write_one_header (FILE *fp, const char *tag, const char *value, const char *pfx, int wraplen, int flags);
@@ -567,4 +572,12 @@ char *strcasestr (const char *, const char *);
 
 #ifndef HAVE_MKDTEMP
 char *mkdtemp (char *tmpl);
+#endif
+
+#ifndef HAVE_STRNLEN
+size_t strnlen(const char *s, size_t maxlen);
+#endif
+
+#ifndef HAVE_STRNDUP
+char *strndup(const char *s, size_t n);
 #endif
