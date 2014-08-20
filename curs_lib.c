@@ -44,6 +44,10 @@
 #include <langinfo.h>
 #endif
 
+#ifdef USE_NOTMUCH
+#include "mutt_notmuch.h"
+#endif
+
 /* not possible to unget more than one char under some curses libs, and it
  * is impossible to unget function keys in SLang, so roll our own input
  * buffering routines.
@@ -67,7 +71,7 @@ void mutt_refresh (void)
 }
 
 /* Make sure that the next refresh does a full refresh.  This could be
-   optmized by not doing it at all if DISPLAY is set as this might
+   optimized by not doing it at all if DISPLAY is set as this might
    indicate that a GUI based pinentry was used.  Having an option to
    customize this is of course the Mutt way.  */
 void mutt_need_hard_redraw (void)
@@ -634,10 +638,6 @@ int _mutt_enter_fname (const char *prompt, char *buf, size_t blen,
     _mutt_select_file (buf, blen, flags, files, numfiles);
     *redraw = REDRAW_FULL;
   }
-  else if (flags & M_SEL_VFOLDER) {
-    _mutt_select_file (buf, blen, flags, files, numfiles);
-    *redraw = REDRAW_FULL;
-  }
   else
   {
     char *pc = safe_malloc (mutt_strlen (prompt) + 3);
@@ -649,6 +649,10 @@ int _mutt_enter_fname (const char *prompt, char *buf, size_t blen,
       buf[0] = 0;
     MAYBE_REDRAW (*redraw);
     FREE (&pc);
+#ifdef USE_NOTMUCH
+    if ((flags & M_SEL_VFOLDER) && buf[0] && strncmp(buf, "notmuch://", 10) != 0)
+      nm_description_to_path(buf, buf, blen);
+#endif
   }
 
   return 0;
@@ -772,6 +776,7 @@ void mutt_format_string (char *dest, size_t destlen,
   size_t k, k2;
   char scratch[MB_LEN_MAX];
   mbstate_t mbstate1, mbstate2;
+  int escaped = 0;
 
   memset(&mbstate1, 0, sizeof (mbstate1));
   memset(&mbstate2, 0, sizeof (mbstate2));
@@ -787,7 +792,15 @@ void mutt_format_string (char *dest, size_t destlen,
       k = (k == (size_t)(-1)) ? 1 : n;
       wc = replacement_char ();
     }
-    if (arboreal && wc < M_TREE_MAX)
+    if (escaped) {
+      escaped = 0;
+      w = 0;
+    }
+    else if (arboreal && wc == M_SPECIAL_INDEX) {
+      escaped = 1;
+      w = 0;
+    }
+    else if (arboreal && wc < M_TREE_MAX)
       w = 1; /* hack */
     else
     {
@@ -957,8 +970,10 @@ int mutt_wstr_trunc (const char *src, size_t maxlen, size_t maxwid, size_t *widt
   memset (&mbstate, 0, sizeof (mbstate));
   for (w = 0; n && (cl = mbrtowc (&wc, src, n, &mbstate)); src += cl, n -= cl)
   {
-    if (cl == (size_t)(-1) || cl == (size_t)(-2))
+    if (cl == (size_t)(-1) || cl == (size_t)(-2)) {
       cw = cl = 1;
+      memset(&mbstate, 0, sizeof (mbstate));
+    }
     else
     {
       cw = wcwidth (wc);
@@ -966,6 +981,8 @@ int mutt_wstr_trunc (const char *src, size_t maxlen, size_t maxwid, size_t *widt
        * until rendered by print_enriched_string (#3364) */
       if (cw < 0 && cl == 1 && src[0] && src[0] < M_TREE_MAX)
 	cw = 1;
+      else if (cw < 0)
+	cw = 0;			/* unprintable wchar */
     }
     if (cl + l > maxlen || cw + w > maxwid)
       break;
@@ -1021,6 +1038,13 @@ int mutt_strwidth (const char *s)
   memset (&mbstate, 0, sizeof (mbstate));
   for (w=0; n && (k = mbrtowc (&wc, s, n, &mbstate)); s += k, n -= k)
   {
+    if (*s == M_SPECIAL_INDEX)
+    {
+      s += 2; /* skip the index coloring sequence */
+      k = 0;
+      continue;
+    }
+
     if (k == (size_t)(-1) || k == (size_t)(-2))
     {
       k = (k == (size_t)(-1)) ? 1 : n;

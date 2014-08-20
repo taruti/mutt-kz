@@ -407,6 +407,118 @@ static void resort_index (MUTTMENU *menu)
   menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 }
 
+void
+mutt_draw_statusline(int cols, char *inbuf)
+{
+  int i          = 0;
+  int cnt        = 0;
+  int last_color = 0;
+  int color      = 0;
+  int offset     = 0;
+  int found = 0;
+  int null_rx = 0;
+  char buf[2048];
+
+  struct line_t {
+	  short chunks;
+	  struct syntax_t {
+		  int color;
+		  int first;
+		  int last;
+	  } *syntax;
+  } lineInfo = { 0, 0 };
+
+  mutt_format_string(buf, sizeof(buf), cols, cols, 0, ' ', inbuf,
+		     mutt_strlen(inbuf), 0);
+  
+  lineInfo.syntax = safe_malloc(sizeof(struct syntax_t));
+  lineInfo.syntax[0].first = -1;
+  lineInfo.syntax[0].last  = -1;
+  lineInfo.syntax[0].color = ColorDefs[MT_COLOR_STATUS];
+  lineInfo.chunks = 1;
+
+    do
+    {
+      found = 0;
+      null_rx = 0;
+      COLOR_LINE *color_line = ColorStatusList;
+
+      if (!buf[offset])
+	break;
+
+      while (color_line)
+      {
+        regmatch_t pmatch[color_line->match + 1];
+
+	if (regexec (&color_line->rx, buf + offset, color_line->match + 1, pmatch,
+		     (offset ? REG_NOTBOL : 0)) == 0)
+	{
+	  if (pmatch[color_line->match].rm_eo != pmatch[color_line->match].rm_so)
+	  {
+	    if (!found)
+	    {
+	      if (++(lineInfo.chunks) > 1)
+		safe_realloc (&(lineInfo.syntax), 
+			      (lineInfo.chunks) * sizeof (struct syntax_t));
+	    }
+	    i = lineInfo.chunks - 1;
+	    pmatch[color_line->match].rm_so += offset;
+	    pmatch[color_line->match].rm_eo += offset;
+	    if (!found ||
+		pmatch[color_line->match].rm_so < (lineInfo.syntax)[i].first ||
+		(pmatch[color_line->match].rm_so == (lineInfo.syntax)[i].first &&
+		 pmatch[color_line->match].rm_eo > (lineInfo.syntax)[i].last))
+	    {
+	      (lineInfo.syntax)[i].color = color_line->pair;
+	      (lineInfo.syntax)[i].first = pmatch[color_line->match].rm_so;
+	      (lineInfo.syntax)[i].last = pmatch[color_line->match].rm_eo;
+	    }
+	    found = 1;
+	    null_rx = 0;
+	  }
+	  else
+	    null_rx = 1; /* empty regexp; don't add it, but keep looking */
+	}
+	color_line = color_line->next;
+      }
+
+      if (null_rx)
+	offset++; /* avoid degenerate cases */
+      else
+	offset = (lineInfo.syntax)[i].last;
+    } while (found || null_rx);
+
+    for (cnt = 0; cnt < mutt_strlen(buf); cnt++) {
+	    color = lineInfo.syntax[0].color;
+	    for (i = 0; i < lineInfo.chunks; i++) {
+		    /* we assume the chunks are sorted */
+		    if (cnt > (lineInfo.syntax)[i].last)
+			    continue;
+		    if (cnt < (lineInfo.syntax)[i].first)
+			    break;
+		    if (cnt != (lineInfo.syntax)[i].last) {
+			    color = (lineInfo.syntax)[i].color;
+			    break;
+		    }
+		    /* don't break here, as cnt might be 
+		     * in the next chunk as well */
+	    }
+	    if (color != last_color) {
+		    attrset (color);
+		    last_color = color;
+	    }
+	    /* XXX more than one char at a time? */
+	    addch ((unsigned char)buf[cnt]);
+#if 0
+	    waddnstr(stdscr, tgbuf, 10);
+	    SETCOLOR (MT_COLOR_NORMAL);
+	    waddnstr(stdscr, tgbuf + 10, -1);
+#endif
+    }
+
+    safe_free(&lineInfo.syntax);
+}
+
 static int main_change_folder(MUTTMENU *menu, int op, char *buf, size_t bufsz,
 			  int *oldcount, int *index_hint)
 {
@@ -633,7 +745,7 @@ int mutt_index_menu (void)
 	move (option (OPTSTATUSONTOP) ? 0 : LINES-2, 0);
 	SETCOLOR (MT_COLOR_STATUS);
         set_buffystats(Context);
-	mutt_paddstr (COLS, buf);
+	mutt_draw_statusline(COLS, buf);
 	NORMAL_COLOR;
 	menu->redraw &= ~REDRAW_STATUS;
       }
@@ -1169,6 +1281,40 @@ int mutt_index_menu (void)
 	break;
 
 #ifdef USE_NOTMUCH
+      case OP_MAIN_ENTIRE_THREAD:
+      {
+	int oldcount  = Context->msgcount;
+	if (Context->magic != M_NOTMUCH) {
+	  mutt_message _("No virtual folder, aborting.");
+	  break;
+	}
+	CHECK_MSGCOUNT;
+        CHECK_VISIBLE;
+	if (nm_read_entire_thread(Context, CURHDR) < 0) {
+	   mutt_message _("Failed to read thread, aborting.");
+	   break;
+	}
+	if (oldcount < Context->msgcount) {
+		HEADER *oldcur = CURHDR;
+
+		if ((Sort & SORT_MASK) == SORT_THREADS)
+			mutt_sort_headers (Context, 0);
+		menu->current = oldcur->virtual;
+		menu->redraw = REDRAW_STATUS | REDRAW_INDEX;
+
+		if (oldcur->collapsed || Context->collapsed) {
+			menu->current = mutt_uncollapse_thread(Context, CURHDR);
+			mutt_set_virtual(Context);
+		}
+	}
+	if (menu->menu == MENU_PAGER)
+	{
+	  op = OP_DISPLAY_MESSAGE;
+	  continue;
+	}
+	break;
+      }
+
       case OP_MAIN_MODIFY_LABELS:
       case OP_MAIN_MODIFY_LABELS_THEN_HIDE:
       {
@@ -1221,6 +1367,11 @@ int mutt_index_menu (void)
 	  {
 	    CURHDR->quasi_deleted = TRUE;
 	    Context->changed = TRUE;
+	  }
+	  if (menu->menu == MENU_PAGER)
+	  {
+	    op = OP_DISPLAY_MESSAGE;
+	    continue;
 	  }
 	  if (option (OPTRESOLVE))
 	  {
@@ -1286,14 +1437,23 @@ int mutt_index_menu (void)
 	    break;
 	  }
 	}
+#ifdef USE_NOTMUCH
+	else if (op == OP_MAIN_CHANGE_VFOLDER) {
+	  if (Context->magic == M_NOTMUCH) {
+		  strfcpy(buf, Context->path, sizeof (buf));
+		  mutt_buffy_vfolder (buf, sizeof (buf));
+	  }
+	  mutt_enter_vfolder (cp, buf, sizeof (buf), &menu->redraw, 1);
+	  if (!buf[0])
+	  {
+	    CLEARLINE (LINES-1);
+	    break;
+	  }
+	}
+#endif
 	else
 	{
 	  mutt_buffy (buf, sizeof (buf));
-#ifdef USE_NOTMUCH
-	  if (op == OP_MAIN_CHANGE_VFOLDER)
-	    mutt_enter_vfolder (cp, buf, sizeof (buf), &menu->redraw, 1);
-	  else
-#endif
           if ( op == OP_SIDEBAR_OPEN )
 	  {
             if(!CurBuffy)

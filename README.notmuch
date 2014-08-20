@@ -76,7 +76,9 @@ notmuch support for mutt
  * commands:
 
    change-vfolder:
-      - switch to another virtual folder
+      - switch to another virtual folder, a new folder maybe be specified by
+        vfolder description (see virtual-mailboxes) or URI
+      - the default is next vfolder with unread messages
       - default key: X
 
    vfolder-from-query:
@@ -102,6 +104,12 @@ notmuch support for mutt
    quasi-delete:
       - delete message from mutt (usually after <sync-mailbox> function), but
         don't touch message on disk
+
+   entire-thread:
+      - add to the current list of the messages all messages that belongs to the same thread
+        as the current message. This command is useful when you have a new email in your INBOX
+        and you want to see the rest of the archived thread.
+      - default key: +
 
  * Pattern modifiers:
 
@@ -132,6 +140,10 @@ notmuch support for mutt
                         "Filesystems"  "notmuch:///whereis/db?query=tag:fs" \
                         "Music"        "notmuch:///another/db?query=tag:hard and tag:heavy"
 
+      The folder description is used for status line, folders browser, sidebar
+      and <change-vfolder> command (this command also accepts vfolder URI). The
+      folder-hook regex uses the URI.
+
    virtual_spoolfile = <boolean>
 
       When set, mutt will use the first virtual mailbox (see virtual-mailboxes)
@@ -140,6 +152,47 @@ notmuch support for mutt
       When set together with sidebar, mutt will use list of virtual folders in
       the sidebar. It's possible to toggle between virtual and normal folders by
       sidebar-toggle command.
+
+   tag-transforms <tag> <transform> [ ...]
+
+      This command specifies text transforms to be shown instead of the actual
+      tag names with '%g' in the index and pager formats. Note that Unicode
+      symbols can be used for transforms.
+
+      example:
+
+      tag-transforms "inbox"   "i"   \
+                     "unread"  "u"   \
+                     "replied" "↻ "  \
+                     "sent"    "➥ "  \
+                     "todo"    "T"   \
+                     "deleted" "DEL" \
+                     "invites" "CAL"
+
+   tag-formats <tag> <format sequence> [ ...]
+
+      Specify index formatting sequences for individual tags for direct
+      placement in the $index_format. The formats must start with 'G' and
+      the entire sequence is case sensitive.
+
+      example:
+
+      tag-formats "inbox"   "GI" \
+                  "unread"  "GU" \
+                  "replied" "GR" \
+                  "sent"    "GS" \
+                  "todo"    "Gt" \
+                  "deleted" "GD" \
+                  "invites" "Gi"
+
+      Now instead of using '%g' in your $index_format, which lists all tags
+      in a non-deterministic order, you can something like the following which puts
+      a transformed tag name in a specific spot on the index line:
+
+      set index_format='4C %S %[%y.%m.%d] %-18.18n %?GU?%GU& ? %?GR?%GR& ? %?GI?%GI& ? %s'
+
+      The %G formatting sequence may display all tags including tags hidden by
+      nm_hidden_tags.
 
    nm_record = <boolean>
 
@@ -174,6 +227,13 @@ notmuch support for mutt
       on screen (index, pager).
 
       Default is "unread,draft,flagged,passed,replied,attachment".
+
+   nm_exclude_tags = <comma delimited list>
+
+      The messages tagged with these tags are excluded and not loaded
+      from notmuch DB to mutt unless specified explicitly.
+
+      Not set by default.
 
    nm_unread_tag = <name>
 
@@ -214,19 +274,13 @@ notmuch support for mutt
    index_format and pager_format
 
         %g   notmuch tags (labels)
+        %Gx  specific notmuch tag defined by tag-formats (see above)
 
         for example:
 
-        set index_format = "%4C %Z  %[%d/%b]  %-16.15F %s %> %?g?(%g)?"
+        tag-formats "inbox" "GI"
+        set index_format = "%4C %Z %?GI?%GI? ?  %[%d/%b]  %-16.15F %s %> %?g?(%g)?"
         set pager_format = "-%Z- %C/%m: %-20.20n   %s%*  -- %?g?(%g)? - (%P)"
-
- * TODO:
-
-   add "entire-thread" command
-
-      to display all e-mails that belongs to the same thread as the current
-      message. This command will be useful when you have a new email ion your INBOX
-      and you want to see the rest of the archived thread.
 
 
 * .muttrc example:
@@ -237,6 +291,7 @@ notmuch support for mutt
 
 	set nm_default_uri="notmuch:///home/kzak/Mail/Maildir"
 	set virtual_spoolfile	= yes
+	set sort_browser        = unsorted
 
 	# normal folders
 	set mbox_type=Maildir
@@ -246,12 +301,14 @@ notmuch support for mutt
 	# sidebar
 	set sidebar_width	= 35
 	set sidebar_visible	= yes
-        set sort_sidebar        = unsorted
+	set sort_sidebar        = unsorted
 	color sidebar_new yellow default
 	bind index <left> sidebar-prev
 	bind index <right> sidebar-next
 	bind index <space> sidebar-open
 	bind index <Esc>S sidebar-toggle
+
+	set index_format="%4C %Z %?GI?%GI& ? %[%d/%b]  %-16.15F %?M?(%3M)&     ? %s %> %?g?%g?"
 
         # virtual folders
 	virtual-mailboxes \
@@ -279,7 +336,10 @@ notmuch support for mutt
 	   " Linux       [archive]" "notmuch://?query=tag:lk and tag:archive" \
 	   " Filesystems [archive]" "notmuch://?query=tag:fs and tag:archive" \
 
+	# move message to archive
 	macro index A "<modify-labels-then-hide>+archive -inbox\n<sync-mailbox>"
+
+	# remove message from inbox
 	macro index I "<modify-labels-then-hide>-inbox\n<sync-mailbox>"
 
 	# mark emails for git-am
@@ -302,7 +362,10 @@ notmuch support for mutt
 		NOINBOX=""
 	}
 
-	### Lists
+	### Deliver emails to maildirs by notmuch-deliver
+	### from notmuch contrib/
+	###
+	###    notmuch-deliver -t <tags> [-t ...] <maildir>
 
 	:0:notmuch.lock
 	* ^List-Id:.*linux.linux.cz
@@ -332,4 +395,3 @@ notmuch support for mutt
 * another example:
 
   http://notmuchmail.org/mutttips/
-

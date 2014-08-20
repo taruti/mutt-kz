@@ -125,12 +125,29 @@ enum
   MT_COLOR_PROGRESS,
   MT_COLOR_NEW,
   MT_COLOR_FLAGGED,
+  /* please no non-MT_COLOR_INDEX objects after this point */
+#ifdef USE_NOTMUCH
+  MT_COLOR_INDEX_TAG,
+#endif
+  MT_COLOR_INDEX_FLAGS,
+  MT_COLOR_INDEX_SUBJECT,
+  MT_COLOR_INDEX_AUTHOR,
+  /* below here - only index coloring stuff that doesn't have a pattern */
+  MT_COLOR_INDEX_COLLAPSED,
+  MT_COLOR_INDEX_DATE,
+  MT_COLOR_INDEX_LABEL,
+  MT_COLOR_INDEX_NUMBER,
+  MT_COLOR_INDEX_SIZE,
+#ifdef USE_NOTMUCH
+  MT_COLOR_INDEX_TAGS,
+#endif
   MT_COLOR_MAX
 };
 
 typedef struct color_line
 {
   regex_t rx;
+  int match; /* which substringmap 0 for old behaviour */
   char *pattern;
   pattern_t *color_pattern; /* compiled pattern to speed up index color
                                calculation */
@@ -177,7 +194,14 @@ extern int ColorQuoteUsed;
 extern int ColorDefs[];
 extern COLOR_LINE *ColorHdrList;
 extern COLOR_LINE *ColorBodyList;
+extern COLOR_LINE *ColorStatusList;
 extern COLOR_LINE *ColorIndexList;
+extern COLOR_LINE *ColorIndexSubjectList;
+extern COLOR_LINE *ColorIndexAuthorList;
+extern COLOR_LINE *ColorIndexFlagsList;
+#ifdef USE_NOTMUCH
+extern COLOR_LINE *ColorIndexTagList;
+#endif
 
 void ci_init_color (void);
 void ci_start_color (void);

@@ -179,7 +179,7 @@ static PARAMETER *parse_parameters (const char *s)
 	for (i=0; *s && i < sizeof (buffer) - 1; i++, s++)
 	{
 	  if (AssumedCharset && *AssumedCharset) {
-            /* As iso-2022-* has a characer of '"' with non-ascii state,
+            /* As iso-2022-* has a character of '"' with non-ascii state,
 	     * ignore it. */
             if (*s == 0x1b && i < sizeof (buffer) - 2)
             {
@@ -1135,21 +1135,6 @@ int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short
       /* We add a new "Message-ID:" when building a message */
       FREE (&e->message_id);
       e->message_id = mutt_extract_message_id (p, NULL);
-
-      if (NULL == e->message_id)
-      {
-        /**
-         * so the message-id doesn't follow the spec. Take the whole thing in
-         * angle-brackets and use as the message-id
-         */
-        size_t message_id_length = strlen (p);
-        e->message_id = safe_malloc (message_id_length + 3);
-        memcpy (e->message_id + 1, p, message_id_length);
-        e->message_id[0] = '<';
-        e->message_id[1 + message_id_length] = '>';
-        e->message_id[1 + message_id_length + 1] = '\0';
-      }
-
       matched = 1;
     }
     else if (!ascii_strncasecmp (line + 1, "ail-", 4))
@@ -1374,7 +1359,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
 	continue; /* just ignore */
       else if (is_from (line, return_path, sizeof (return_path), &t))
       {
-	/* MH somtimes has the From_ line in the middle of the header! */
+	/* MH sometimes has the From_ line in the middle of the header! */
 	if (hdr && !hdr->received)
 	  hdr->received = t - mutt_local_tz (t);
 	continue;

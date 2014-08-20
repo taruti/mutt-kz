@@ -587,7 +587,7 @@ static gpgme_key_t *create_recipient_set (const char *keylist,
 	  {
 	    if (i>1 && buf[i-1] == '!') 
 	      {
-		/* The user selected to override the valididy of that
+		/* The user selected to override the validity of that
 		   key. */
 		buf[i-1] = 0;
 	    
@@ -818,6 +818,7 @@ static BODY *sign_message (BODY *a, int use_smime)
   char buf[100];
   gpgme_ctx_t ctx;
   gpgme_data_t message, signature;
+  gpgme_sign_result_t sigres;
 
   convert_to_7bit (a); /* Signed data _must_ be in 7-bit format. */
 
@@ -859,6 +860,17 @@ static BODY *sign_message (BODY *a, int use_smime)
       mutt_error (_("error signing data: %s\n"), gpgme_strerror (err));
       return NULL;
     }
+  /* Check for zero signatures generated.  This can occur when $pgp_sign_as is
+   * unset and there is no default key specified in ~/.gnupg/gpg.conf
+   */
+  sigres = gpgme_op_sign_result (ctx);
+  if (!sigres->signatures)
+  {
+      gpgme_data_release (signature);
+      gpgme_release (ctx);
+      mutt_error (_("$pgp_sign_as unset and no default key specified in ~/.gnupg/gpg.conf"));
+      return NULL;
+  }
 
   sigfile = data_object_to_tempfile (signature, NULL);
   gpgme_data_release (signature);
@@ -1217,7 +1229,7 @@ static void show_fingerprint (gpgme_key_t key, STATE *state)
   FREE (&buf);
 }
 
-/* Show the valididy of a key used for one signature. */
+/* Show the validity of a key used for one signature. */
 static void show_one_sig_validity (gpgme_ctx_t ctx, int idx, STATE *s)
 {
   gpgme_verify_result_t result = NULL;
@@ -1263,21 +1275,31 @@ static void print_smime_keyinfo (const char* msg, gpgme_signature_t sig,
 
   state_attach_puts (msg, s);
   state_attach_puts (" ", s);
-  for (uids = key->uids; uids; uids = uids->next)
+  /* key is NULL when not present in the user's keyring */
+  if (key)
   {
-    if (uids->revoked)
-      continue;
-    if (aka)
+    for (uids = key->uids; uids; uids = uids->next)
     {
-      msglen = mutt_strlen (msg) - 4;
-      for (i = 0; i < msglen; i++)
-        state_attach_puts(" ", s);
-      state_attach_puts(_("aka: "), s);
+      if (uids->revoked)
+	continue;
+      if (aka)
+      {
+	msglen = mutt_strlen (msg) - 4;
+	for (i = 0; i < msglen; i++)
+	  state_attach_puts(" ", s);
+	state_attach_puts(_("aka: "), s);
+      }
+      state_attach_puts (uids->uid, s);
+      state_attach_puts ("\n", s);
+
+      aka = 1;
     }
-    state_attach_puts (uids->uid, s);
+  }
+  else
+  {
+    state_attach_puts (_("KeyID "), s);
+    state_attach_puts (sig->fpr, s);
     state_attach_puts ("\n", s);
-    
-    aka = 1;
   }
 
   msglen = mutt_strlen (msg) - 8;
@@ -1288,9 +1310,9 @@ static void print_smime_keyinfo (const char* msg, gpgme_signature_t sig,
   state_attach_puts ("\n", s);  
 }
 
-/* Show information about one signature.  This fucntion is called with
-   the context CTX of a sucessful verification operation and the
-   enumerator IDX which should start at 0 and incremete for each
+/* Show information about one signature.  This function is called with
+   the context CTX of a successful verification operation and the
+   enumerator IDX which should start at 0 and increment for each
    call/signature. 
 
    Return values are: 0 for normal procession, 1 for a bad signature,
@@ -1330,23 +1352,32 @@ static int show_one_sig_status (gpgme_ctx_t ctx, int idx, STATE *s)
       if (gpg_err_code (sig->status) != GPG_ERR_NO_ERROR)
 	anybad = 1;
 
-      err = gpgme_get_key (ctx, fpr, &key, 0); /* secret key?  */
-      if (! err)
+      if (gpg_err_code (sig->status) != GPG_ERR_NO_PUBKEY)
+      {
+	err = gpgme_get_key (ctx, fpr, &key, 0); /* secret key?  */
+	if (! err)
 	{
 	  if (! signature_key)
 	    signature_key = key;
 	}
+	else
+	{
+	  key = NULL; /* Old gpgme versions did not set KEY to NULL on
+			 error.   Do it here to avoid a double free. */
+	}
+      }
       else
-       {
-          key = NULL; /* Old gpgme versions did not set KEY to NULL on
-                         error.   Do it here to avoid a double free. */
-       }
+      {
+	/* pubkey not present */
+      }
 
       if (!s || !s->fpout || !(s->flags & M_DISPLAY))
 	; /* No state information so no way to print anything. */
       else if (err)
 	{
-          state_attach_puts (_("Error getting key information: "), s);
+          state_attach_puts (_("Error getting key information for KeyID "), s);
+	  state_attach_puts ( fpr, s );
+          state_attach_puts (_(": "), s);
           state_attach_puts ( gpgme_strerror (err), s );
           state_attach_puts ("\n", s);
           anybad = 1;
@@ -1377,9 +1408,13 @@ static int show_one_sig_status (gpgme_ctx_t ctx, int idx, STATE *s)
       else /* can't decide (yellow) */
       {
         print_smime_keyinfo (_("Problem signature from:"), sig, key, s);
-        state_attach_puts (_("               expires: "), s);
-        print_time (sig->exp_timestamp, s);
-        state_attach_puts ("\n", s);
+	/* 0 indicates no expiration */
+	if (sig->exp_timestamp)
+	{
+	  state_attach_puts (_("               expires: "), s);
+	  print_time (sig->exp_timestamp, s);
+	  state_attach_puts ("\n", s);
+	}
 	show_sig_summary (sum, ctx, key, idx, s, sig);
         anywarn = 1;
       }
@@ -1783,10 +1818,10 @@ int smime_gpgme_decrypt_mime (FILE *fpin, FILE **fpout, BODY *b, BODY **cur)
          an ugly way of doing it but we have anyway a problem with
          arbitrary encoded S/MIME messages: Only the outer part may be
          encrypted.  The entire mime parsing should be revamped,
-         probably by keeping the temportary files so that we don't
+         probably by keeping the temporary files so that we don't
          need to decrypt them all the time.  Inner parts of an
-         encrypted part can then pint into this file and tehre won't
-         never be a need to decrypt again.  This needs a partial
+         encrypted part can then point into this file and there won't
+         ever be a need to decrypt again.  This needs a partial
          rewrite of the MIME engine. */
       BODY *bb = *cur;
       BODY *tmp_b;
@@ -2785,7 +2820,7 @@ static const char *crypt_entry_fmt (char *dest,
   return (src);
 }
       
-/* Used by the display fucntion to format a line. */
+/* Used by the display function to format a line. */
 static void crypt_entry (char *s, size_t l, MUTTMENU * menu, int num)
 {
   crypt_key_t **key_table = (crypt_key_t **) menu->data;
@@ -4366,7 +4401,8 @@ static void init_common(void)
 #ifdef ENABLE_NLS
     gpgme_set_locale (NULL, LC_MESSAGES, setlocale (LC_MESSAGES, NULL));
 #endif
-    has_run = true;
+    has_run = 1; /* note use of 1 here is intentional to avoid requiring "true"
+		    to be defined.  see #3657 */
   }
 }
 

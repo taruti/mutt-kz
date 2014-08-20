@@ -1008,16 +1008,11 @@ int mutt_check_overwrite (const char *attname, const char *path,
     else if ((rc = mutt_yesorno (_("File is a directory, save under it?"), M_YES)) != M_YES)
       return (rc == M_NO) ? 1 : -1;
 
-    if (!attname || !attname[0])
-    {
-      tmp[0] = 0;
-      if (mutt_get_field (_("File under directory: "), tmp, sizeof (tmp),
-				      M_FILE | M_CLEAR) != 0 || !tmp[0])
-	return (-1);
-      mutt_concat_path (fname, path, tmp, flen);
-    }
-    else
-      mutt_concat_path (fname, path, mutt_basename (attname), flen);
+    strfcpy (tmp, mutt_basename (NONULL (attname)), sizeof (tmp));
+    if (mutt_get_field (_("File under directory: "), tmp, sizeof (tmp),
+                                    M_FILE | M_CLEAR) != 0 || !tmp[0])
+      return (-1);
+    mutt_concat_path (fname, path, tmp, flen);
   }
   
   if (*append == 0 && access (fname, F_OK) == 0)
@@ -1233,8 +1228,31 @@ void mutt_FormatString (char *dest,		/* output buffer */
 
       if (*src == '?')
       {
+	/* change original %? to new %< notation */
+	/* %?x?y&z? to %<x?y&z> and y and z is nestable */
+	char *p = (char *)src;
+	*p = '<';
+	for ( ; *p && *p != '?'; p++);
+	if (*p == '?')
+	  p++;
+	for ( ; *p && *p != '?'; p++);
+	if (*p == '?')
+	  *p = '>';
+      }
+
+      if (*src == '<')
+      {
 	flags |= M_FORMAT_OPTIONAL;
+	ch = *(++src); /* save the character to switch on */
 	src++;
+	cp = prefix;
+	count = 0;
+	while (count < sizeof (prefix) && *src != '?')
+	{
+	  *cp++ = *src++;
+	  count++;
+	}
+	*cp = 0;
       }
       else
       {
@@ -1250,15 +1268,17 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	  count++;
 	}
 	*cp = 0;
+
+        if (!*src)
+	  break; /* bad format */
+
+        ch = *src++; /* save the character to switch on */
       }
-
-      if (!*src)
-	break; /* bad format */
-
-      ch = *src++; /* save the character to switch on */
 
       if (flags & M_FORMAT_OPTIONAL)
       {
+	int lrbalance;
+
         if (*src != '?')
           break; /* bad format */
         src++;
@@ -1266,8 +1286,22 @@ void mutt_FormatString (char *dest,		/* output buffer */
         /* eat the `if' part of the string */
         cp = ifstring;
 	count = 0;
-        while (count < sizeof (ifstring) && *src && *src != '?' && *src != '&')
+	lrbalance = 1;
+        while (lrbalance > 0 && count < sizeof (ifstring) && *src)
 	{
+	  if (*src == '\\')
+	  {
+	    src++;
+	    *cp++ = *src++;
+	  }
+	  else if (src[0] == '%' && src[1] == '<')
+	    lrbalance++;
+	  else if (src[0] == '>')
+	    lrbalance--;
+	  if (lrbalance == 0)
+	    break;
+	  if (lrbalance == 1 && src[0] == '&')
+	    break;
           *cp++ = *src++;
 	  count++;
 	}
@@ -1278,9 +1312,22 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	  src++; /* skip the & */
 	cp = elsestring;
 	count = 0;
-	while (count < sizeof (elsestring) && *src && *src != '?')
+	while (lrbalance > 0 && count < sizeof (elsestring) && *src)
 	{
-	  *cp++ = *src++;
+	  if (*src == '\\')
+	  {
+	    src++;
+	    *cp++ = *src++;
+	  }
+	  else if (src[0] == '%' && src[1] == '<')
+	    lrbalance++;
+	  else if (src[0] == '>')
+	    lrbalance--;
+	  if (lrbalance == 0)
+	    break;
+	  if (lrbalance == 1 && src[0] == '&')
+	    break;
+          *cp++ = *src++;
 	  count++;
 	}
 	*cp = 0;
@@ -1288,7 +1335,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	if (!*src)
 	  break; /* bad format */
 
-        src++; /* move past the trailing `?' */
+        src++; /* move past the trailing `>' (formerly '?') */
       }
 
       /* handle generic cases first */
@@ -1379,9 +1426,9 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	    /* \0-terminate dest for length computation in mutt_wstr_trunc() */
 	    *wptr = 0;
 	    /* make sure right part is at most as wide as display */
-	    len = mutt_wstr_trunc (buf, destlen, COLS, &wid);
+	    len = mutt_wstr_trunc (buf, destlen, COLS - SidebarWidth, &wid);
 	    /* truncate left so that right part fits completely in */
-	    wlen = mutt_wstr_trunc (dest, destlen - len, col + pad, &col);
+	    wlen = mutt_wstr_trunc (dest, destlen - len, col + pad*pw, &col);
 	    wptr = dest + wlen;
 	  }
 	  if (len + wlen > destlen)
@@ -1808,7 +1855,7 @@ void mutt_buffer_free (BUFFER **p)
    FREE(p);		/* __FREE_CHECKED__ */
 }
 
-/* dynamically grows a BUFFER to accomodate s, in increments of 128 bytes.
+/* dynamically grows a BUFFER to accommodate s, in increments of 128 bytes.
  * Always one byte bigger than necessary for the null terminator, and
  * the buffer is always null-terminated */
 void mutt_buffer_add (BUFFER* buf, const char* s, size_t len)

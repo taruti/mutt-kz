@@ -66,6 +66,14 @@
 # define MB_LEN_MAX 16
 #endif
 
+#ifdef HAVE_FGETS_UNLOCKED
+# define fgets fgets_unlocked
+#endif
+
+#ifdef HAVE_FGETC_UNLOCKED
+# define fgetc fgetc_unlocked
+#endif
+
 /* nifty trick I stole from ELM 2.5alpha. */
 #ifdef MAIN_C
 #define WHERE 
@@ -164,6 +172,8 @@ typedef enum
 #define M_TREE_BTEE		12
 #define M_TREE_MISSING		13
 #define M_TREE_MAX		14
+
+#define M_SPECIAL_INDEX		M_TREE_MAX
 
 #define M_THREAD_COLLAPSE	(1<<0)
 #define M_THREAD_UNCOLLAPSE	(1<<1)
@@ -305,6 +315,7 @@ enum
 #define SENDMAILX	(1<<6)
 #define SENDKEY		(1<<7)
 #define SENDRESEND	(1<<8)
+#define SENDPOSTPONEDFCC	(1<<9) /* used by mutt_get_postponed() to signal that the x-mutt-fcc header field was present */
 
 /* flags to _mutt_select_file() */
 #define M_SEL_BUFFY	(1<<0)
@@ -490,7 +501,7 @@ enum
 
   /* pseudo options */
 
-  OPTAUXSORT,		/* (pseudo) using auxillary sort function */
+  OPTAUXSORT,		/* (pseudo) using auxiliary sort function */
   OPTFORCEREFRESH,	/* (pseudo) refresh even during macros */
   OPTLOCALES,		/* (pseudo) set if user has valid locale definition */
   OPTNOCURSES,		/* (pseudo) when sending in batch mode */
@@ -906,7 +917,7 @@ typedef struct _context
   unsigned int locked : 1;	/* is the mailbox locked? */
   unsigned int changed : 1;	/* mailbox has been modified */
   unsigned int readonly : 1;    /* don't allow changes to the mailbox */
-  unsigned int dontwrite : 1;   /* dont write the mailbox on close */
+  unsigned int dontwrite : 1;   /* don't write the mailbox on close */
   unsigned int append : 1;	/* mailbox is opened in append mode */
   unsigned int quiet : 1;	/* inhibit status messages? */
   unsigned int collapsed : 1;   /* are all threads collapsed? */

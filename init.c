@@ -262,12 +262,12 @@ int mutt_extract_token (BUFFER *dest, BUFFER *tok, int flags)
       tok->dptr = pc + 1;
 
       /* read line */
-      memset (&expn, 0, sizeof (expn));
+      mutt_buffer_init (&expn);
       expn.data = mutt_read_line (NULL, &expn.dsize, fp, &line, 0);
       safe_fclose (&fp);
       mutt_wait_filter (pid);
 
-      /* if we got output, make a new string consiting of the shell ouptput
+      /* if we got output, make a new string consisting of the shell output
 	 plus whatever else was left on the original line */
       /* BUT: If this is inside a quoted string, directly add output to 
        * the token */
@@ -714,7 +714,7 @@ static int parse_spam_list (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *
 {
   BUFFER templ;
 
-  memset(&templ, 0, sizeof(templ));
+  mutt_buffer_init (&templ);
 
   /* Insist on at least one parameter */
   if (!MoreArgs(s))
@@ -1452,7 +1452,7 @@ static int parse_my_hdr (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err
 	/* replace the old value */
 	FREE (&tmp->data);
 	tmp->data = buf->data;
-	memset (buf, 0, sizeof (BUFFER));
+	mutt_buffer_init (buf);
 	return 0;
       }
       if (!tmp->next)
@@ -1467,7 +1467,7 @@ static int parse_my_hdr (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err
     UserHeader = tmp;
   }
   tmp->data = buf->data;
-  memset (buf, 0, sizeof (BUFFER));
+  mutt_buffer_init (buf);
   return 0;
 }
 
@@ -2265,7 +2265,7 @@ static int source_rc (const char *rcfile, BUFFER *err)
     return (-1);
   }
 
-  memset (&token, 0, sizeof (token));
+  mutt_buffer_init (&token);
   while ((linebuf = mutt_read_line (linebuf, &buflen, f, &line, M_CONT)) != NULL)
   {
     conv=ConfigCharset && (*ConfigCharset) && Charset;
@@ -2349,7 +2349,7 @@ int mutt_parse_rc_line (/* const */ char *line, BUFFER *token, BUFFER *err)
   if (!line || !*line)
     return 0;
 
-  memset (&expn, 0, sizeof (expn));
+  mutt_buffer_init (&expn);
   expn.data = expn.dptr = line;
   expn.dsize = mutt_strlen (line);
 
@@ -2479,7 +2479,7 @@ int mutt_command_complete (char *buffer, size_t len, int pos, int numtabs)
     if (Completed[0] == 0 && User_typed[0])
       return 0;
 
-     /* Num_matched will _always_ be atleast 1 since the initial
+     /* Num_matched will _always_ be at least 1 since the initial
       * user-typed string is always stored */
     if (numtabs == 1 && Num_matched == 2)
       snprintf(Completed, sizeof(Completed),"%s", Matches[0]);
@@ -2535,7 +2535,7 @@ int mutt_command_complete (char *buffer, size_t len, int pos, int numtabs)
     if (Completed[0] == 0 && User_typed[0])
       return 0;
 
-    /* Num_matched will _always_ be atleast 1 since the initial
+    /* Num_matched will _always_ be at least 1 since the initial
      * user-typed string is always stored */
     if (numtabs == 1 && Num_matched == 2)
       snprintf(Completed, sizeof(Completed),"%s", Matches[0]);
@@ -2582,7 +2582,7 @@ int mutt_command_complete (char *buffer, size_t len, int pos, int numtabs)
     if (Completed[0] == 0 && User_typed[0])
       return 0;
 
-    /* Num_matched will _always_ be atleast 1 since the initial
+    /* Num_matched will _always_ be at least 1 since the initial
      * user-typed string is always stored */
     if (numtabs == 1 && Num_matched == 2)
       snprintf(Completed, sizeof(Completed),"%s", Matches[0]);
@@ -2921,10 +2921,10 @@ int mutt_query_variables (LIST *queries)
   char command[STRING];
   
   BUFFER err, token;
-  
-  memset (&err, 0, sizeof (err));
-  memset (&token, 0, sizeof (token));
-  
+
+  mutt_buffer_init (&err);
+  mutt_buffer_init (&token);
+
   err.dsize = STRING;
   err.data = safe_malloc (err.dsize);
   
@@ -2956,10 +2956,10 @@ int mutt_dump_variables (void)
   char command[STRING];
   
   BUFFER err, token;
-  
-  memset (&err, 0, sizeof (err));
-  memset (&token, 0, sizeof (token));
-  
+
+  mutt_buffer_init (&err);
+  mutt_buffer_init (&token);
+
   err.dsize = STRING;
   err.data = safe_malloc (err.dsize);
   
@@ -3009,7 +3009,6 @@ int mutt_getvaluebyname (const char *name, const struct mapping_t *map)
 #ifdef DEBUG
 static void start_debug (void)
 {
-  time_t t;
   int i;
   char buf[_POSIX_PATH_MAX];
   char buf2[_POSIX_PATH_MAX];
@@ -3023,7 +3022,6 @@ static void start_debug (void)
   }
   if ((debugfile = safe_fopen(buf, "w")) != NULL)
   {
-    t = time (0);
     setbuf (debugfile, NULL); /* don't buffer the debugging output! */
     dprint(1,(debugfile,"Mutt/%s (%s) debugging at level %d\n",
 	      MUTT_VERSION, ReleaseDate, debuglevel));
@@ -3035,10 +3033,10 @@ static int mutt_execute_commands (LIST *p)
 {
   BUFFER err, token;
 
-  memset (&err, 0, sizeof (err));
+  mutt_buffer_init (&err);
   err.dsize = STRING;
   err.data = safe_malloc (err.dsize);
-  memset (&token, 0, sizeof (token));
+  mutt_buffer_init (&token);
   for (; p; p = p->next)
   {
     if (mutt_parse_rc_line (p->data, &token, &err) != 0)
@@ -3081,14 +3079,18 @@ void mutt_init (int skip_sys_rc, LIST *commands)
   int i, default_rc = 0, need_pause = 0;
   BUFFER err;
 
-  memset (&err, 0, sizeof (err));
+  mutt_buffer_init (&err);
   err.dsize = STRING;
   err.data = safe_malloc(err.dsize);
   err.dptr = err.data;
 
   Groups = hash_create (1031, 0);
   ReverseAlias = hash_create (1031, 1);
-  
+#ifdef USE_NOTMUCH
+  TagTransforms = hash_create (64, 1);
+  TagFormats = hash_create (64, 0);
+#endif
+
   mutt_menu_init ();
   mutt_srandom ();
 
@@ -3207,11 +3209,11 @@ void mutt_init (int skip_sys_rc, LIST *commands)
 
     snprintf (buffer, sizeof (buffer), "Reply-To: %s", p);
 
-    memset (&buf, 0, sizeof (buf));
+    mutt_buffer_init (&buf);
     buf.data = buf.dptr = buffer;
     buf.dsize = mutt_strlen (buffer);
 
-    memset (&token, 0, sizeof (token));
+    mutt_buffer_init (&token);
     parse_my_hdr (&token, &buf, 0, &err);
     FREE (&token.data);
   }
@@ -3395,6 +3397,70 @@ static int parse_group_context (group_context_t **ctx, BUFFER *buf, BUFFER *s, u
   mutt_group_context_destroy (ctx);
   return -1;
 }
+
+#ifdef USE_NOTMUCH
+int parse_tag_transforms (BUFFER *b, BUFFER *s, unsigned long data, BUFFER *err)
+{
+  char *tmp;
+
+  while (MoreArgs (s))
+  {
+    char *tag, *transform;
+
+    mutt_extract_token (b, s, 0);
+    if (b->data && *b->data)
+      tag = safe_strdup (b->data);
+    else
+      continue;
+
+    mutt_extract_token (b, s, 0);
+    transform = safe_strdup (b->data);
+
+    /* avoid duplicates */
+    tmp = hash_find(TagTransforms, tag);
+    if (tmp) {
+      dprint(3,(debugfile,"tag transform '%s' already registered as '%s'\n", tag, tmp));
+      FREE(&tag);
+      FREE(&transform);
+      continue;
+    }
+
+    hash_insert(TagTransforms, tag, transform, 0);
+  }
+  return 0;
+}
+
+int parse_tag_formats (BUFFER *b, BUFFER *s, unsigned long data, BUFFER *err)
+{
+  char *tmp;
+
+  while (MoreArgs (s))
+  {
+    char *tag, *format;
+
+    mutt_extract_token (b, s, 0);
+    if (b->data && *b->data)
+      tag = safe_strdup (b->data);
+    else
+      continue;
+
+    mutt_extract_token (b, s, 0);
+    format = safe_strdup (b->data);
+
+    /* avoid duplicates */
+    tmp = hash_find(TagFormats, format);
+    if (tmp) {
+      dprint(3,(debugfile,"tag format '%s' already registered as '%s'\n", format, tmp));
+      FREE(&tag);
+      FREE(&format);
+      continue;
+    }
+
+    hash_insert(TagFormats, format, tag, 0);
+  }
+  return 0;
+}
+#endif
 
 static void myvar_set (const char* var, const char* val)
 {

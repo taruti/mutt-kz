@@ -244,7 +244,7 @@ err_crt:
  */
 static int protocol_priority[] = {GNUTLS_TLS1_2, GNUTLS_TLS1_1, GNUTLS_TLS1, GNUTLS_SSL3, 0};
 
-/* tls_negotiate: After TLS state has been initialised, attempt to negotiate
+/* tls_negotiate: After TLS state has been initialized, attempt to negotiate
  *   TLS over the wire, including certificate checks. */
 static int tls_negotiate (CONNECTION * conn)
 {
@@ -385,7 +385,15 @@ static int tls_socket_close (CONNECTION* conn)
   tlssockdata *data = conn->sockdata;
   if (data)
   {
-    gnutls_bye (data->state, GNUTLS_SHUT_RDWR);
+    /* shut down only the write half to avoid hanging waiting for the remote to respond.
+     *
+     * RFC5246 7.2.1. "Closure Alerts"
+     *
+     * It is not required for the initiator of the close to wait for the
+     * responding close_notify alert before closing the read side of the
+     * connection.
+     */
+    gnutls_bye (data->state, GNUTLS_SHUT_WR);
 
     gnutls_certificate_free_credentials (data->xcred);
     gnutls_deinit (data->state);
@@ -684,6 +692,9 @@ static int tls_check_preauth (const gnutls_datum_t *certdata,
   return -1;
 }
 
+/*
+ * Returns 0 on failure, nonzero on success.
+ */
 static int tls_check_one_certificate (const gnutls_datum_t *certdata,
                                       gnutls_certificate_status certstat,
                                       const char* hostname, int idx, int len)
@@ -737,7 +748,7 @@ static int tls_check_one_certificate (const gnutls_datum_t *certdata,
     mutt_error (_("Error processing certificate data"));
     mutt_sleep (2);
     gnutls_x509_crt_deinit (cert);
-    return -1;
+    return 0;
   }
 
   menu = mutt_new_menu (-1);

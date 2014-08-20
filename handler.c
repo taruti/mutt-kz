@@ -970,7 +970,7 @@ static int mutt_is_autoview (BODY *b)
     }
     else
     {
-      /* determine if this type is on ther user's auto_view list */
+      /* determine if this type is on the user's auto_view list */
       LIST *t = AutoViewList;
 
       for (; t; t = t->next) {
@@ -1019,7 +1019,7 @@ static int alternative_handler (BODY *a, STATE *s)
 
   a = b;
 
-  /* First, search list of prefered types */
+  /* First, search list of preferred types */
   t = AlternativeOrderList;
   while (t && !choice)
   {
@@ -1595,7 +1595,7 @@ int mutt_body_handler (BODY *b, STATE *s)
   FILE *fp = NULL;
   char tempfile[_POSIX_PATH_MAX];
   handler_t handler = NULL;
-  long tmpoffset = 0;
+  LOFF_T tmpoffset = 0;
   size_t tmplength = 0;
   int rc = 0;
 
